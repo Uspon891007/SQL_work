@@ -256,7 +256,25 @@ order by total
 
 --24
 
+SELECT TOP 1
+c.CustomerID,o.EmployeeID,SUM(UnitPrice)
+FROM [Order Details] od
+INNER JOIN Orders o ON od.OrderID = o.OrderID
+INNER JOIN Customers c ON o.CustomerID = c.CustomerID
+INNER JOIN Employees e ON o.EmployeeID = e.EmployeeID
+WHERE e.FirstName = (
+SELECT TOP 1
+e.FirstName
+FROM [Order Details] od
+INNER JOIN Orders o ON od.OrderID = o.OrderID
+INNER JOIN Employees e ON o.EmployeeID = e.EmployeeID
+GROUP BY e.FirstName
+ORDER BY COUNT(od.Quantity) DESC
+)
+GROUP BY c.CustomerID,o.EmployeeID
+ORDER BY SUM(UnitPrice) DESC
 
+--25
 SELECT TOP 1
 c.CustomerID,SUM(UnitPrice)
 FROM [Order Details] od
@@ -275,3 +293,125 @@ ORDER BY COUNT(od.Quantity) DESC
 GROUP BY c.CustomerID
 ORDER BY SUM(UnitPrice) DESC
 
+--26
+SELECT
+*
+FROM Products p
+LEFT JOIN [Order Details] od ON p.ProductID = od.ProductID
+LEFT JOIN Orders o ON od.OrderID = o.OrderID
+WHERE od.Quantity IS NULL
+
+--27
+SELECT
+c.CustomerID,SUM(od.UnitPrice) AS Total
+FROM Customers c
+INNER JOIN Orders o ON c.CustomerID = o.CustomerID
+INNER JOIN [Order Details] od ON o.OrderID = od.OrderID
+WHERE c.CustomerID IN (
+SELECT
+CustomerID
+FROM Customers
+WHERE Fax IS NULL
+)
+GROUP BY c.CustomerID
+
+--28
+SELECT
+o.ShipCountry,COUNT(p.CategoryID) AS TotalOfCategory
+FROM Orders o
+INNER JOIN [Order Details] od ON o.OrderID = od.OrderID
+INNER JOIN Products p ON od.ProductID = p.ProductID
+GROUP BY o.ShipCountry
+
+--29
+SELECT
+p.ProductName,SUM(od.Quantity) AS Total
+FROM Products p
+INNER join [Order Details] od on od.ProductID=p.ProductID
+WHERE  p.UnitsInStock='0'
+GROUP BY p.ProductName
+
+--30
+SELECT DISTINCT 
+o.CustomerID
+FROM Products p
+inner join [Order Details] od ON od.ProductID=p.ProductID
+inner join Orders o ON o.OrderID=od.OrderID
+WHERE p.UnitsInStock='0'
+
+--31
+SELECT 
+e.ReportsTo,SUM(od.Quantity*od.UnitPrice*(1-od.Discount)) Total
+FROM Employees e
+INNER JOIN Orders o ON o.EmployeeID = e.EmployeeID
+INNER JOIN [Order Details] od ON od.OrderID = o.OrderID
+WHERE e.ReportsTo IS NOT NULL
+GROUP BY e.ReportsTo
+
+--32
+WITH t1 AS (
+    SELECT 
+		s.ShipperID, c.CategoryName, SUM(od.Quantity) AS TotalQuantity,
+        ROW_NUMBER() OVER (PARTITION BY s.ShipperID ORDER BY SUM(od.Quantity) DESC) AS RowNumber
+    FROM [Order Details] od
+    INNER JOIN Products p ON p.ProductID = od.ProductID
+    INNER JOIN Categories c ON c.CategoryID = p.CategoryID
+    INNER JOIN Orders o ON o.OrderID = od.OrderID
+    INNER JOIN Shippers s ON s.ShipperID = o.ShipVia
+    GROUP BY s.ShipperID, c.CategoryName
+)
+SELECT ShipperID, CategoryName, TotalQuantity
+FROM t1
+WHERE RowNumber = 1
+
+--33
+WITH t1 AS(
+SELECT 
+c.CustomerID,p.CategoryID,SUM(od.Quantity) AS Qty,SUM(od.UnitPrice*od.Quantity*(1-od.Discount))AS Price
+FROM Customers c
+inner join Orders o ON o.CustomerID=c.CustomerID
+inner join [Order Details] od ON od.OrderID=o.OrderID
+inner join Products p ON p.ProductID=od.ProductID
+group by c.CustomerID,p.CategoryID
+),
+t2 AS(
+SELECT *,RANK() OVER(PARTITION BY CustomerID ORDER BY Qty DESC)AS rk
+FROM t1)
+SELECT CustomerID,CategoryID,price
+FROM t2
+WHERE rk=1
+
+--34
+WITH t1 AS(SELECT o.CustomerID,od.ProductID,SUM(od.Quantity)AS Total
+FROM Orders o
+inner join [Order Details] od ON od.OrderID=o.OrderID
+GROUP BY o.CustomerID,od.ProductID),
+t2 AS(
+SELECT *,RANK() OVER (PARTITION BY CustomerID ORDER BY Total DESC) AS a
+FROM t1)
+SELECT CustomerID,ProductID,Total
+FROM t2
+WHERE a=1
+
+--35
+SELECT 
+ShipCity, MAX(ShippedDate) recentDate
+FROM ORDERS 
+WHERE ShipCity IS NOT NULL
+GROUP BY ShipCity
+
+--36
+WITH t1 AS(
+SELECT c.CustomerID, SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) SumPrice,
+	ROW_NUMBER() OVER (
+		ORDER BY SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) DESC
+	) AS NoDesc
+FROM Customers c
+INNER JOIN Orders o ON o.CustomerID = c.CustomerID
+INNER JOIN [Order Details] od ON od.OrderID = o.OrderID
+GROUP BY c.CustomerID
+)
+SELECT t1.CustomerID, t1.SumPrice SumPrice1,  t2.CustomerID, t2.SumPrice SumPrice2, ABS(t1.SumPrice - t2.SumPrice) gap
+FROM t1 t1
+INNER JOIN t1 t2 ON t1.NoDesc = 5 AND t2.NoDesc = 10
+WHERE t1.NoDesc = 5 OR t2.NoDesc = 10;
